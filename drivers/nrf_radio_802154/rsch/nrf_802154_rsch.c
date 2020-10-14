@@ -55,6 +55,7 @@ static volatile rsch_prio_t m_last_notified_prio;            ///< Last reported 
 static volatile rsch_prio_t m_approved_prios[RSCH_PREC_CNT]; ///< Priority levels approved by each precondition.
 static rsch_prio_t          m_requested_prio;                ///< Priority requested from all preconditions.
 static rsch_prio_t          m_cont_mode_prio;                ///< Continuous mode priority level. If continuous mode is not requested equal to @ref RSCH_PRIO_IDLE.
+static volatile bool        m_shall_notify_raal;             ///< Flag that indicates that RAAL shall be notified about continuous mode end.
 
 typedef struct
 {
@@ -295,6 +296,9 @@ static inline bool notify_core(void)
     {
         if (!mutex_trylock(&m_ntf_mutex, &m_ntf_mutex_monitor))
         {
+            // Lower priority will detect that another context tried to lock mutex and
+            // it will retry the notification if necessary. Therefore it can be considered done
+            notified = true;
             break;
         }
 
@@ -422,7 +426,11 @@ void nrf_802154_rsch_continuous_mode_priority_set(rsch_prio_t prio)
 
 void nrf_802154_rsch_continuous_ended(void)
 {
-    nrf_raal_continuous_ended();
+    if (m_shall_notify_raal)
+    {
+        m_shall_notify_raal = false;
+        nrf_raal_continuous_ended();
+    }
 }
 
 bool nrf_802154_rsch_timeslot_request(uint32_t length_us)
@@ -557,6 +565,8 @@ void nrf_raal_timeslot_ended(void)
     nrf_802154_log(EVENT_TRACE_ENTER, FUNCTION_RSCH_TIMESLOT_ENDED);
 
     prec_approved_prio_set(RSCH_PREC_RAAL, RSCH_PRIO_IDLE);
+
+    m_shall_notify_raal = true;
 
     // Ensure that RAAL can finish its processing even if core is not informed about it
     if (!notify_core())
