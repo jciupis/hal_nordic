@@ -220,6 +220,7 @@ static inline void all_prec_update(void)
                 prec_approved_prio_set(RSCH_PREC_HFCLK, RSCH_PRIO_IDLE);
 
                 nrf_raal_continuous_mode_exit();
+                prec_approved_prio_set(RSCH_PREC_RAAL, RSCH_PRIO_IDLE);
             }
             else
             {
@@ -304,8 +305,6 @@ static inline bool notify_core(void)
          */
         temp_mon          = m_ntf_mutex_monitor;
         approved_prio_lvl = approved_prio_lvl_get();
-
-        nrf_802154_log(0x000c, m_last_notified_prio);
 
         if (m_last_notified_prio != approved_prio_lvl)
         {
@@ -553,22 +552,17 @@ void nrf_raal_timeslot_started(void)
     nrf_802154_log(EVENT_TRACE_EXIT, FUNCTION_RSCH_TIMESLOT_STARTED);
 }
 
-void nrf_raal_timeslot_closing(void)
-{
-    nrf_802154_log(EVENT_TRACE_ENTER, FUNCTION_RSCH_TIMESLOT_CLOSING);
-
-    prec_approved_prio_set(RSCH_PREC_RAAL, RSCH_PRIO_IDLE);
-    (void)notify_core();
-
-    nrf_802154_log(EVENT_TRACE_EXIT, FUNCTION_RSCH_TIMESLOT_CLOSING);
-}
-
 void nrf_raal_timeslot_ended(void)
 {
     nrf_802154_log(EVENT_TRACE_ENTER, FUNCTION_RSCH_TIMESLOT_ENDED);
 
     prec_approved_prio_set(RSCH_PREC_RAAL, RSCH_PRIO_IDLE);
-    (void)notify_core();
+
+    // Ensure that RAAL can finish its processing even if core is not informed about it
+    if (!notify_core())
+    {
+        nrf_802154_rsch_continuous_ended();
+    }
 
     nrf_802154_log(EVENT_TRACE_EXIT, FUNCTION_RSCH_TIMESLOT_ENDED);
 }

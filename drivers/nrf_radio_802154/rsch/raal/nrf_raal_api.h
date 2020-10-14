@@ -130,7 +130,7 @@ uint32_t nrf_raal_timeslot_us_left_get(void);
 extern void nrf_raal_timeslot_started(void);
 
 /**
- * @brief Notifies the radio driver that a timeslot is about to end. Called by the RAAL client.
+ * @brief Notifies the radio driver about the end of a timeslot. Called by the RAAL client.
  *
  * Depending on the RAAL client configuration, the radio driver has NRF_RAAL_MAX_CLEAN_UP_TIME_US
  * microseconds to do any clean-up actions on the RADIO peripheral and stop using it.
@@ -147,14 +147,6 @@ extern void nrf_raal_timeslot_started(void);
  *       NRF_RAAL_MAX_CLEAN_UP_TIME_US microseconds, this method is to be called with high
  *       interrupt priority level to avoid unwanted delays.
  *
- */
-extern void nrf_raal_timeslot_closing(void);
-
-/**
- * @brief Notifies the radio driver that the arbiter has been moved out of the continuous mode
- *        successfully.
- *
- * Radio driver shall assume that timeslot has been finished when this function is called.
  */
 extern void nrf_raal_timeslot_ended(void);
 
