@@ -42,15 +42,21 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "nrf_802154.h"
 #include "nrf_802154_config.h"
 #include "nrf_802154_peripherals.h"
 #include "nrf_802154_queue.h"
+#include "nrf_802154_stats.h"
 #include "nrf_802154_swi.h"
+#include "nrf_802154_tx_work_buffer.h"
 #include "nrf_802154_utils.h"
 #include "hal/nrf_egu.h"
+
+#define RAW_PAYLOAD_OFFSET 1
+#define RAW_LENGTH_OFFSET  0
 
 /** Size of notification queue.
  *
@@ -59,11 +65,11 @@
  *
  * One slot is lost due to simplified queue implementation.
  */
-#define NTF_QUEUE_SIZE ((NRF_802154_RX_BUFFERS + 3) + 1)
+#define NTF_QUEUE_SIZE     ((NRF_802154_RX_BUFFERS + 3) + 1)
 
-#define NTF_INT        NRF_EGU_INT_TRIGGERED0   ///< Label of notification interrupt.
-#define NTF_TASK       NRF_EGU_TASK_TRIGGER0    ///< Label of notification task.
-#define NTF_EVENT      NRF_EGU_EVENT_TRIGGERED0 ///< Label of notification event.
+#define NTF_INT            NRF_EGU_INT_TRIGGERED0   ///< Label of notification interrupt.
+#define NTF_TASK           NRF_EGU_TASK_TRIGGER0    ///< Label of notification task.
+#define NTF_EVENT          NRF_EGU_EVENT_TRIGGERED0 ///< Label of notification event.
 
 /// Types of notifications in notification queue.
 typedef enum
@@ -100,17 +106,16 @@ typedef struct
 
         struct
         {
-            const uint8_t * p_frame; ///< Pointer to frame that was transmitted.
-            uint8_t       * p_ack;   ///< Pointer to a buffer containing PHR and PSDU of the received ACK or NULL.
-            int8_t          power;   ///< RSSI of received ACK or 0.
-            uint8_t         lqi;     ///< LQI of received ACK or 0.
-        } transmitted;               ///< Transmitted frame details.
+            const uint8_t                     * p_frame;  ///< Pointer to frame that was transmitted.
+            nrf_802154_transmit_done_metadata_t metadata; ///< Metadata structure describing @ref p_frame.
+        } transmitted;                                    ///< Transmitted frame details.
 
         struct
         {
-            const uint8_t       * p_frame; ///< Pointer to frame that was requested to be transmitted, but failed.
-            nrf_802154_tx_error_t error;   ///< An error code that indicates reason of the failure.
-        } transmit_failed;
+            const uint8_t                     * p_frame;  ///< Pointer to frame that was requested to be transmitted, but failed.
+            nrf_802154_tx_error_t               error;    ///< An error code that indicates reason of the failure.
+            nrf_802154_transmit_done_metadata_t metadata; ///< Metadata structure describing @ref p_frame.
+        } transmit_failed;                                ///< Failed transmission details.
 
         struct
         {
@@ -213,24 +218,17 @@ void swi_notify_receive_failed(nrf_802154_rx_error_t error, uint32_t id)
  *
  * The notification is triggered from the SWI priority level.
  *
- * @param[in]  p_frame  Pointer to a buffer that contains PHR and PSDU of the transmitted frame.
- * @param[in]  p_ack    Pointer to a buffer that contains PHR and PSDU of ACK frame. NULL if ACK was
- *                      not requested.
- * @param[in]  power    RSSI of the received frame, or 0 if ACK was not requested.
- * @param[in]  lqi      LQI of the received frame, or 0 if ACK was not requested.
+ * @param[in]  p_frame      Pointer to a buffer that contains PHR and PSDU of the transmitted frame.
+ * @param[in]  p_metadata   Pointer to a metadata structure describing frame passed in @p p_frame.
  */
-void swi_notify_transmitted(const uint8_t * p_frame,
-                            uint8_t       * p_ack,
-                            int8_t          power,
-                            uint8_t         lqi)
+void swi_notify_transmitted(const uint8_t                       * p_frame,
+                            nrf_802154_transmit_done_metadata_t * p_metadata)
 {
     nrf_802154_ntf_data_t * p_slot = ntf_enter();
 
-    p_slot->type                     = NTF_TYPE_TRANSMITTED;
-    p_slot->data.transmitted.p_frame = p_frame;
-    p_slot->data.transmitted.p_ack   = p_ack;
-    p_slot->data.transmitted.power   = power;
-    p_slot->data.transmitted.lqi     = lqi;
+    p_slot->type                      = NTF_TYPE_TRANSMITTED;
+    p_slot->data.transmitted.p_frame  = p_frame;
+    p_slot->data.transmitted.metadata = *p_metadata;
 
     ntf_exit();
 }
@@ -239,17 +237,21 @@ void swi_notify_transmitted(const uint8_t * p_frame,
  * @brief Notifies the next higher layer that a frame was not transmitted from the SWI priority
  * level.
  *
- * @param[in]  p_frame  Pointer to a buffer that contains PHR and PSDU of the frame that failed
- *                      the transmission.
- * @param[in]  error    Reason of the transmission failure.
+ * @param[in]  p_frame      Pointer to a buffer that contains PHR and PSDU of the frame that failed
+ *                          the transmission.
+ * @param[in]  error        Reason of the transmission failure.
+ * @param[in]  p_metadata   Pointer to a metadata structure describing frame passed in @p p_frame.
  */
-void swi_notify_transmit_failed(const uint8_t * p_frame, nrf_802154_tx_error_t error)
+void swi_notify_transmit_failed(const uint8_t                             * p_frame,
+                                nrf_802154_tx_error_t                       error,
+                                const nrf_802154_transmit_done_metadata_t * p_metadata)
 {
     nrf_802154_ntf_data_t * p_slot = ntf_enter();
 
-    p_slot->type                         = NTF_TYPE_TRANSMIT_FAILED;
-    p_slot->data.transmit_failed.p_frame = p_frame;
-    p_slot->data.transmit_failed.error   = error;
+    p_slot->type                          = NTF_TYPE_TRANSMIT_FAILED;
+    p_slot->data.transmit_failed.p_frame  = p_frame;
+    p_slot->data.transmit_failed.error    = error;
+    p_slot->data.transmit_failed.metadata = *p_metadata;
 
     ntf_exit();
 }
@@ -342,17 +344,38 @@ void nrf_802154_notify_receive_failed(nrf_802154_rx_error_t error, uint32_t id)
     swi_notify_receive_failed(error, id);
 }
 
-void nrf_802154_notify_transmitted(const uint8_t * p_frame,
-                                   uint8_t       * p_ack,
-                                   int8_t          power,
-                                   uint8_t         lqi)
+void nrf_802154_notify_transmitted(const uint8_t                       * p_frame,
+                                   nrf_802154_transmit_done_metadata_t * p_metadata)
 {
-    swi_notify_transmitted(p_frame, p_ack, power, lqi);
+    // Update timestamp if needed
+    uint32_t timestamp = (p_metadata->data.transmitted.p_ack == NULL) ? NRF_802154_NO_TIMESTAMP
+                         : nrf_802154_stat_timestamp_read(last_ack_end_timestamp);
+
+    ((nrf_802154_transmit_done_metadata_t *)p_metadata)->data.transmitted.time = timestamp;
+
+    // Update the transmitted frame contents and update frame status flags
+    nrf_802154_tx_work_buffer_original_frame_update(
+        (uint8_t *)p_frame,
+        &p_metadata->frame_props.is_secured,
+        &p_metadata->frame_props.dynamic_data_is_set);
+
+    // Notify
+    swi_notify_transmitted(p_frame, p_metadata);
 }
 
-void nrf_802154_notify_transmit_failed(const uint8_t * p_frame, nrf_802154_tx_error_t error)
+void nrf_802154_notify_transmit_failed(const uint8_t       * p_frame,
+                                       nrf_802154_tx_error_t error)
 {
-    swi_notify_transmit_failed(p_frame, error);
+    nrf_802154_transmit_done_metadata_t metadata = {0};
+
+    // Update the failed frame contents and update frame status flags
+    nrf_802154_tx_work_buffer_original_frame_update(
+        (uint8_t *)p_frame,
+        &metadata.frame_props.is_secured,
+        &metadata.frame_props.dynamic_data_is_set);
+
+    // Notify
+    swi_notify_transmit_failed(p_frame, error, &metadata);
 }
 
 void nrf_802154_notify_energy_detected(uint8_t result)
@@ -407,23 +430,16 @@ static void irq_handler_ntf_event(void)
             {
 #if NRF_802154_USE_RAW_API
                 nrf_802154_transmitted_raw(p_slot->data.transmitted.p_frame,
-                                           p_slot->data.transmitted.p_ack,
-                                           p_slot->data.transmitted.power,
-                                           p_slot->data.transmitted.lqi);
+                                           &p_slot->data.transmitted.metadata);
 #else // NRF_802154_USE_RAW_API
-                uint8_t * p_ack  = NULL;
-                uint8_t   length = 0;
-
-                if (p_slot->data.transmitted.p_ack != NULL)
+                if (p_slot->data.transmitted.metadata.data.transmitted.p_ack != NULL)
                 {
-                    p_ack  = p_slot->data.transmitted.p_ack + RAW_PAYLOAD_OFFSET;
-                    length = p_slot->data.transmitted.p_ack[RAW_LENGTH_OFFSET];
+                    p_slot->data.transmitted.metadata.data.transmitted.length =
+                        p_slot->data.transmitted.metadata.data.transmitted.p_ack[RAW_LENGTH_OFFSET];
+                    p_slot->data.transmitted.metadata.data.transmitted.p_ack += RAW_PAYLOAD_OFFSET;
                 }
                 nrf_802154_transmitted(p_slot->data.transmitted.p_frame + RAW_PAYLOAD_OFFSET,
-                                       p_ack,
-                                       length,
-                                       p_slot->data.transmitted.power,
-                                       p_slot->data.transmitted.lqi);
+                                       &p_slot->data.transmitted.metadata);
 #endif
             }
             break;
@@ -431,11 +447,13 @@ static void irq_handler_ntf_event(void)
             case NTF_TYPE_TRANSMIT_FAILED:
 #if NRF_802154_USE_RAW_API
                 nrf_802154_transmit_failed(p_slot->data.transmit_failed.p_frame,
-                                           p_slot->data.transmit_failed.error);
+                                           p_slot->data.transmit_failed.error,
+                                           &p_slot->data.transmit_failed.metadata);
 #else // NRF_802154_USE_RAW_API
                 nrf_802154_transmit_failed(
                     p_slot->data.transmit_failed.p_frame + RAW_PAYLOAD_OFFSET,
-                    p_slot->data.transmit_failed.error);
+                    p_slot->data.transmit_failed.error,
+                    &p_slot->data.transmit_failed.metadata);
 #endif
                 break;
 
@@ -473,3 +491,13 @@ void nrf_802154_notification_swi_irq_handler(void)
         irq_handler_ntf_event();
     }
 }
+
+#if defined(TEST)
+void nrf_802154_notification_swi_module_reset(void)
+{
+    m_mcu_cs = 0UL;
+    memset(&m_notifications_queue_memory, 0U, sizeof(m_notifications_queue_memory));
+    memset(&m_notifications_queue, 0U, sizeof(m_notifications_queue));
+}
+
+#endif // defined(TEST)

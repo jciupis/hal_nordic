@@ -59,6 +59,9 @@ typedef bool (* abort_hook)(nrf_802154_term_t term_lvl, req_originator_t req_ori
 typedef bool (* pre_transmission_hook)(const uint8_t                           * p_frame,
                                        nrf_802154_transmit_params_t            * p_params,
                                        nrf_802154_transmit_failed_notification_t notify_function);
+typedef bool (* tx_setup_hook)(const uint8_t                           * p_frame,
+                               nrf_802154_transmit_params_t            * p_params,
+                               nrf_802154_transmit_failed_notification_t notify_function);
 typedef void (* transmitted_hook)(const uint8_t * p_frame);
 typedef bool (* tx_failed_hook)(const uint8_t * p_frame, nrf_802154_tx_error_t error);
 typedef bool (* tx_started_hook)(const uint8_t * p_frame);
@@ -97,14 +100,19 @@ static const pre_transmission_hook m_pre_transmission_hooks[] =
 #if NRF_802154_IFS_ENABLED
     nrf_802154_ifs_pretransmission,
 #endif
+    NULL,
+};
+
+static const tx_setup_hook m_tx_setup_hooks[] =
+{
 #if NRF_802154_IE_WRITER_ENABLED
-    nrf_802154_ie_writer_pretransmission,
+    nrf_802154_ie_writer_tx_setup,
 #endif
 #if NRF_802154_SECURITY_WRITER_ENABLED
-    nrf_802154_security_writer_pretransmission,
+    nrf_802154_security_writer_tx_setup,
 #endif
 #if NRF_802154_ENCRYPTION_ENABLED
-    nrf_802154_encrypt_pretransmission,
+    nrf_802154_encrypt_tx_setup,
 #endif
     NULL,
 };
@@ -141,6 +149,10 @@ static const tx_started_hook m_tx_started_hooks[] =
 
 #if NRF_802154_ACK_TIMEOUT_ENABLED
     nrf_802154_ack_timeout_tx_started_hook,
+#endif
+
+#if NRF_802154_SECURITY_WRITER_ENABLED
+    nrf_802154_security_writer_tx_started_hook,
 #endif
 
 #if NRF_802154_IE_WRITER_ENABLED
@@ -223,6 +235,32 @@ bool nrf_802154_core_hooks_pre_transmission(
         }
 
         result = m_pre_transmission_hooks[i](p_frame, p_params, notify_function);
+
+        if (!result)
+        {
+            break;
+        }
+    }
+
+    return result;
+}
+
+bool nrf_802154_core_hooks_tx_setup(
+    const uint8_t                           * p_frame,
+    nrf_802154_transmit_params_t            * p_params,
+    nrf_802154_transmit_failed_notification_t notify_function)
+{
+    bool result = true;
+
+    for (uint32_t i = 0; i < sizeof(m_tx_setup_hooks) / sizeof(m_tx_setup_hooks[0]);
+         i++)
+    {
+        if (m_tx_setup_hooks[i] == NULL)
+        {
+            break;
+        }
+
+        result = m_tx_setup_hooks[i](p_frame, p_params, notify_function);
 
         if (!result)
         {

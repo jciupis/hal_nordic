@@ -39,6 +39,7 @@
 #include <stdint.h>
 
 #include "nrf_802154_types.h"
+#include "mac_features/nrf_802154_frame_parser.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,12 +48,12 @@ extern "C" {
 /**
  * @brief Prepares encryption data for provided Ack.
  *
- * @param[in]  p_ack  Pointer to the buffer that contains the PHR and PSDU of the ACK frame.
+ * @param[in]  p_ack_data  Pointer to the ACK frame parser data.
  */
-bool nrf_802154_encrypt_ack_prepare(const uint8_t * p_ack);
+bool nrf_802154_encrypt_ack_prepare(const nrf_802154_frame_parser_data_t * p_ack_data);
 
 /**
- * @brief Pretransmission hook for the encryption module.
+ * @brief Transmission setup hook for the encryption module.
  *
  * This hook prepares encryption data for provided frame.
  *
@@ -64,7 +65,7 @@ bool nrf_802154_encrypt_ack_prepare(const uint8_t * p_ack);
  * @retval  true         Encryption was prepared successfully.
  * @retval  false        Encryption prepare failed.
  */
-bool nrf_802154_encrypt_pretransmission(
+bool nrf_802154_encrypt_tx_setup(
     const uint8_t                           * p_frame,
     nrf_802154_transmit_params_t            * p_params,
     nrf_802154_transmit_failed_notification_t notify_function);

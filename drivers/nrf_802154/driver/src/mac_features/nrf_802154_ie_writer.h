@@ -70,7 +70,7 @@
 void nrf_802154_ie_writer_prepare(uint8_t * p_ie_header, const uint8_t * p_end_addr);
 
 /**
- * @brief Pretransmission hook for the IE writer module.
+ * @brief Transmission setup hook for the IE writer module.
  *
  * This hook parses the frame in search of header Information Elements and arms
  * the IE writer module. The IE writer module shall write data to recognized
@@ -87,7 +87,7 @@ void nrf_802154_ie_writer_prepare(uint8_t * p_ie_header, const uint8_t * p_end_a
  *
  * @retval  true         Always succeeds.
  */
-bool nrf_802154_ie_writer_pretransmission(
+bool nrf_802154_ie_writer_tx_setup(
     const uint8_t                           * p_frame,
     nrf_802154_transmit_params_t            * p_params,
     nrf_802154_transmit_failed_notification_t notify_function);

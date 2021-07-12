@@ -278,14 +278,13 @@ bail:
     SERIALIZATION_ERROR_RAISE_IF_FAILED(ser_error);
 }
 
-void nrf_802154_transmitted_raw(const uint8_t * p_frame,
-                                uint8_t       * p_ack,
-                                int8_t          power,
-                                uint8_t         lqi)
+void nrf_802154_transmitted_raw(const uint8_t                             * p_frame,
+                                const nrf_802154_transmit_done_metadata_t * p_metadata)
 {
-    uint32_t remote_frame_handle;
-    uint32_t ack_handle = 0;
-    uint32_t ack_len    = 0;
+    uint32_t  remote_frame_handle;
+    uint32_t  ack_handle = 0;
+    uint32_t  ack_len    = 0;
+    uint8_t * p_ack      = p_metadata->data.transmitted.p_ack;
 
     SERIALIZATION_ERROR_INIT(error);
 
@@ -327,9 +326,13 @@ void nrf_802154_transmitted_raw(const uint8_t * p_frame,
         SPINEL_PROP_VENDOR_NORDIC_NRF_802154_TRANSMITTED_RAW,
         SPINEL_DATATYPE_NRF_802154_TRANSMITTED_RAW,
         remote_frame_handle,
-        NRF_802154_HDATA_ENCODE(ack_handle, p_ack, ack_len),
-        power,
-        lqi);
+        p_metadata->frame_props.is_secured,
+        p_metadata->frame_props.dynamic_data_is_set,
+        p_metadata->data.transmitted.length,
+        p_metadata->data.transmitted.power,
+        p_metadata->data.transmitted.lqi,
+        p_metadata->data.transmitted.time,
+        NRF_802154_HDATA_ENCODE(ack_handle, p_ack, ack_len));
 
     // Free the local frame pointer no matter the result of serialization
     local_transmitted_frame_ptr_free((void *)p_frame);
@@ -343,8 +346,9 @@ bail:
     return;
 }
 
-void nrf_802154_transmit_failed(const uint8_t       * p_frame,
-                                nrf_802154_tx_error_t tx_error)
+void nrf_802154_transmit_failed(const uint8_t                             * p_frame,
+                                nrf_802154_tx_error_t                       tx_error,
+                                const nrf_802154_transmit_done_metadata_t * p_metadata)
 {
     uint32_t remote_frame_handle;
 
@@ -370,7 +374,9 @@ void nrf_802154_transmit_failed(const uint8_t       * p_frame,
         SPINEL_PROP_VENDOR_NORDIC_NRF_802154_TRANSMIT_FAILED,
         SPINEL_DATATYPE_NRF_802154_TRANSMIT_FAILED,
         remote_frame_handle,
-        tx_error);
+        tx_error,
+        p_metadata->frame_props.is_secured,
+        p_metadata->frame_props.dynamic_data_is_set);
 
     // Free the local frame pointer no matter the result of serialization
     local_transmitted_frame_ptr_free((void *)p_frame);

@@ -60,12 +60,13 @@
  *       timed out by the next layer. The ACK timeout timer must start when
  *       the @ref nrf_802154_tx_started() function is called.
  *
- * @param[in]  p_data             Pointer to a buffer the contains PHR and PSDU of the frame
- *                                that is to be transmitted.
- * @param[in]  is_retransmission  Flag that indicates if the CSMA-CA procedure to be started is
- *                                a retransmission.
+ * @param[in]  p_data      Pointer to a buffer the contains PHR and PSDU of the frame that is
+ *                         to be transmitted.
+ * @param[in]  p_metadata  Pointer to metadata structure. Contains detailed properties of data
+ *                         to transmit.
  */
-void nrf_802154_csma_ca_start(const uint8_t * p_data, bool is_retransmission);
+void nrf_802154_csma_ca_start(const uint8_t                                * p_data,
+                              const nrf_802154_transmit_csma_ca_metadata_t * p_metadata);
 
 /**
  * @brief Aborts the ongoing CSMA-CA procedure.
